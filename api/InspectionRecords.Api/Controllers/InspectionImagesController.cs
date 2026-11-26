@@ -1,13 +1,12 @@
-using Inspections.Data;
+using Inspections.Service;
 using Inspections.Models.Entities;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace Inspections.API.Controllers;
 
 [ApiController]
 [Route("api/inspection-records/{recordId:int}/image")]
-public class InspectionImagesController(InspectionDbContext db) : ControllerBase
+public class InspectionImagesController(IInspectionImageStore images) : ControllerBase
 {
     private const int MaxImageBytes = 10 * 1024 * 1024;
 
@@ -18,7 +17,7 @@ public class InspectionImagesController(InspectionDbContext db) : ControllerBase
         if (file.Length is <= 0 or > MaxImageBytes)
             return BadRequest("Select an image up to 10 MB.");
 
-        if (!await db.Inspections.AnyAsync(item => item.Id == recordId, token))
+        if (!await images.InspectionExistsAsync(recordId, token))
             return NotFound();
 
         using var buffer = new MemoryStream((int)file.Length);
@@ -35,8 +34,7 @@ public class InspectionImagesController(InspectionDbContext db) : ControllerBase
             ContentType = mimeType,
             Content = content
         };
-        db.InspectionImages.Add(image);
-        await db.SaveChangesAsync(token);
+        await images.AddAsync(image, token);
         return CreatedAtAction(nameof(Download), new { recordId, fileName = image.BlobName },
             new { image.BlobName });
     }
@@ -44,16 +42,14 @@ public class InspectionImagesController(InspectionDbContext db) : ControllerBase
     [HttpGet]
     public async Task<IActionResult> List(int recordId, CancellationToken token)
     {
-        var names = await db.InspectionImages.Where(image => image.InspectionId == recordId)
-            .OrderBy(image => image.Id).Select(image => new { image.BlobName }).ToListAsync(token);
-        return Ok(names);
+        var names = await images.ListNamesAsync(recordId, token);
+        return Ok(names.Select(name => new { BlobName = name }));
     }
 
     [HttpGet("download")]
     public async Task<IActionResult> Download(int recordId, string fileName, CancellationToken token)
     {
-        var image = await db.InspectionImages.AsNoTracking().FirstOrDefaultAsync(
-            image => image.InspectionId == recordId && image.BlobName == fileName, token);
+        var image = await images.FindAsync(recordId, fileName, token);
         Response.Headers.XContentTypeOptions = "nosniff";
         return image is null ? NotFound() : File(image.Content, image.ContentType);
     }

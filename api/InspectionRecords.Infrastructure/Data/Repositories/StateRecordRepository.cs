@@ -12,6 +12,12 @@ public class StateRecordRepository : IStateRecordRepository
         _context = context;
     }
 
+    public Task<List<StateMap>> GetMapsAsync(CancellationToken cancellationToken) =>
+        _context.StateMaps.AsNoTracking().OrderBy(map => map.Name).ToListAsync(cancellationToken);
+
+    public Task<List<StateDefinition>> GetDefinitionsAsync(CancellationToken cancellationToken) =>
+        _context.StateDefinitions.AsNoTracking().OrderBy(state => state.Name).ToListAsync(cancellationToken);
+
     public async Task<IReadOnlyList<StateRecord>> GetAllAsync(CancellationToken cancellationToken = default)
     {
         return await _context.StateRecords

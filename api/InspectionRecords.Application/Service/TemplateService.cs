@@ -1,56 +1,26 @@
-using Inspections.Data;
 using Inspections.Models.DTOs.Template;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using TemplateEntity = Inspections.Models.Entities.Templates.Template;
 using TemplateVersionEntity = Inspections.Models.Entities.Templates.TemplateVersion;
 using TemplateFieldEntity = Inspections.Models.Entities.Templates.TemplateField;
 
-namespace Inspections.API.Controllers.Template;
+namespace Inspections.Service;
 
-[ApiController]
-[Route("api/[controller]")]
-public class TemplateController : ControllerBase
+public sealed class TemplateService(ITemplateRepository repository)
 {
-    private readonly InspectionDbContext _context;
-
-    public TemplateController(InspectionDbContext context)
+    public async Task<List<TemplateDto>> GetTemplates(CancellationToken cancellationToken)
     {
-        _context = context;
+        var templates = await repository.ListAsync(cancellationToken);
+
+        return templates;
     }
 
-    [HttpGet]
-    public async Task<ActionResult<List<TemplateDto>>> GetTemplates(CancellationToken cancellationToken)
+    public async Task<TemplateDetailDto?> GetTemplate(int id, CancellationToken cancellationToken)
     {
-        var templates = await _context.Templates
-            .AsNoTracking()
-            .OrderBy(t => t.Name)
-            .Select(t => new TemplateDto
-            {
-                Id = t.Id,
-                Name = t.Name,
-                Description = t.Description,
-                IsActive = t.IsActive,
-                CreatedAt = t.CreatedAt,
-                VersionCount = t.Versions.Count
-            })
-            .ToListAsync(cancellationToken);
-
-        return Ok(templates);
-    }
-
-    [HttpGet("{id:int}")]
-    public async Task<ActionResult<TemplateDetailDto>> GetTemplate(int id, CancellationToken cancellationToken)
-    {
-        var template = await _context.Templates
-            .AsNoTracking()
-            .Include(t => t.Versions)
-                .ThenInclude(v => v.Fields)
-            .SingleOrDefaultAsync(t => t.Id == id, cancellationToken);
+        var template = await repository.GetDetailsAsync(id, cancellationToken);
 
         if (template is null)
         {
-            return NotFound();
+            return null;
         }
 
         var dto = new TemplateDetailDto
@@ -89,15 +59,14 @@ public class TemplateController : ControllerBase
                 .ToList()
         };
 
-        return Ok(dto);
+        return dto;
     }
 
-    [HttpPost]
-    public async Task<ActionResult<TemplateDto>> CreateTemplate([FromBody] CreateTemplateDto request, CancellationToken cancellationToken)
+    public async Task<TemplateDto?> CreateTemplate(CreateTemplateDto request, string createdBy, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
         {
-            return BadRequest("Template name is required.");
+            return null;
         }
 
         var template = new TemplateEntity
@@ -108,20 +77,15 @@ public class TemplateController : ControllerBase
             CreatedAt = DateTime.UtcNow
         };
 
-        _context.Templates.Add(template);
-        await _context.SaveChangesAsync(cancellationToken);
-
         var version = new TemplateVersionEntity
         {
-            TemplateId = template.Id,
             VersionNumber = 1,
             CreatedAt = DateTime.UtcNow,
-            CreatedBy = User.Identity?.Name ?? "system",
+            CreatedBy = createdBy,
             Template = template
         };
 
-        _context.TemplateVersions.Add(version);
-        await _context.SaveChangesAsync(cancellationToken);
+        template.Versions.Add(version);
 
         foreach (var fieldRequest in request.Fields.OrderBy(f => f.DisplayOrder))
         {
@@ -132,8 +96,6 @@ public class TemplateController : ControllerBase
 
             var field = new TemplateFieldEntity
             {
-                TemplateId = template.Id,
-                TemplateVersionId = version.Id,
                 Name = fieldRequest.Name.Trim(),
                 Label = string.IsNullOrWhiteSpace(fieldRequest.Label) ? fieldRequest.Name.Trim() : fieldRequest.Label.Trim(),
                 FieldType = fieldRequest.FieldType,
@@ -143,10 +105,10 @@ public class TemplateController : ControllerBase
                 TemplateVersion = version
             };
 
-            _context.TemplateFields.Add(field);
+            version.Fields.Add(field);
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
+        await repository.AddAsync(template, version, cancellationToken);
 
         var created = new TemplateDto
         {
@@ -158,18 +120,16 @@ public class TemplateController : ControllerBase
             VersionCount = 1
         };
 
-        return CreatedAtAction(nameof(GetTemplate), new { id = template.Id }, created);
+        return created;
     }
 
-    [HttpPut("{id:int}")]
-    public async Task<IActionResult> UpdateTemplate(int id, [FromBody] UpdateTemplateDto request, CancellationToken cancellationToken)
+    public async Task<bool> UpdateTemplate(int id, UpdateTemplateDto request, CancellationToken cancellationToken)
     {
-        var template = await _context.Templates
-            .SingleOrDefaultAsync(t => t.Id == id, cancellationToken);
+        var template = await repository.FindAsync(id, cancellationToken);
 
         if (template is null)
         {
-            return NotFound();
+            return false;
         }
 
         if (!string.IsNullOrWhiteSpace(request.Name))
@@ -187,29 +147,25 @@ public class TemplateController : ControllerBase
             template.IsActive = request.IsActive.Value;
         }
 
-        await _context.SaveChangesAsync(cancellationToken);
-        return NoContent();
+        await repository.SaveAsync(cancellationToken);
+        return true;
     }
 
-    [HttpDelete("{id:int}")]
-    public async Task<IActionResult> DeleteTemplate(int id, CancellationToken cancellationToken)
+    public async Task<TemplateDeletion> DeleteTemplate(int id, CancellationToken cancellationToken)
     {
-        var template = await _context.Templates
-            .SingleOrDefaultAsync(t => t.Id == id, cancellationToken);
+        var template = await repository.FindAsync(id, cancellationToken);
 
         if (template is null)
         {
-            return NotFound();
+            return TemplateDeletion.Missing;
         }
 
-        if (await _context.Inspections.AnyAsync(i => i.TemplateId == id, cancellationToken) ||
-            await _context.Checklists.AnyAsync(c => c.TemplateVersion.TemplateId == id, cancellationToken))
+        if (await repository.IsInUseAsync(id, cancellationToken))
         {
-            return Conflict("This template is already in use. Deactivate it instead.");
+            return TemplateDeletion.InUse;
         }
 
-        _context.Templates.Remove(template);
-        await _context.SaveChangesAsync(cancellationToken);
-        return NoContent();
+        await repository.DeleteAsync(template, cancellationToken);
+        return TemplateDeletion.Deleted;
     }
 }

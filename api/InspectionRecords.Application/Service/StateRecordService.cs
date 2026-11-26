@@ -1,8 +1,6 @@
-using Inspections.Data;
 using Inspections.Data.Repositories;
 using Inspections.Models.DTOs;
 using Inspections.Models.Entities;
-using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
 
 namespace Inspections.Service;
@@ -10,12 +8,10 @@ namespace Inspections.Service;
 public class StateRecordService : IStateRecordService
 {
     private readonly IStateRecordRepository _repository;
-    private readonly RecordsDbContext _recordsDbContext;
 
-    public StateRecordService(IStateRecordRepository repository, RecordsDbContext recordsDbContext)
+    public StateRecordService(IStateRecordRepository repository)
     {
         _repository = repository;
-        _recordsDbContext = recordsDbContext;
     }
 
     public async Task<IReadOnlyList<StateRecordDto>> GetAllAsync(CancellationToken cancellationToken = default)
@@ -26,10 +22,7 @@ public class StateRecordService : IStateRecordService
 
     public async Task<IReadOnlyList<StateMapDto>> GetMapLocationsAsync(CancellationToken cancellationToken = default)
     {
-        var maps = await _recordsDbContext.StateMaps
-            .AsNoTracking()
-            .OrderBy(map => map.Name)
-            .ToListAsync(cancellationToken);
+        var maps = await _repository.GetMapsAsync(cancellationToken);
 
         return maps.Select(map => new StateMapDto(
             map.Id,
@@ -47,10 +40,7 @@ public class StateRecordService : IStateRecordService
         var recordsByState = records.GroupBy(r => r.StateId)
             .ToDictionary(g => g.Key, g => g.ToList());
 
-        var stateDefinitions = await _recordsDbContext.StateDefinitions
-            .AsNoTracking()
-            .OrderBy(state => state.Name)
-            .ToListAsync(cancellationToken);
+        var stateDefinitions = await _repository.GetDefinitionsAsync(cancellationToken);
 
         return stateDefinitions.ToDictionary(
             state => state.Id,

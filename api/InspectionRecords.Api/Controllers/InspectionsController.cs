@@ -1,14 +1,12 @@
-using Inspections.Data;
 using Inspections.Models.DTOs;
 using Inspections.Service;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace Inspections.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class InspectionsController(IInspectionService inspectionService, InspectionDbContext db) : ControllerBase
+public class InspectionsController(IInspectionService inspectionService, ITemplateRepository templates) : ControllerBase
 {
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<InspectionDto>>> GetAll(CancellationToken cancellationToken)
@@ -55,7 +53,7 @@ public class InspectionsController(IInspectionService inspectionService, Inspect
         if (request.ScheduledAt == default)
             return BadRequest("A scheduled date is required.");
         if (request.TemplateId is int templateId &&
-            !await db.Templates.AnyAsync(template => template.Id == templateId && template.IsActive, cancellationToken))
+            !await templates.IsActiveAsync(templateId, cancellationToken))
             return BadRequest("Select an active template.");
 
         var created = await inspectionService.CreateAsync(request, cancellationToken);

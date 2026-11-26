@@ -2,6 +2,19 @@
 
 A local inspection app adapted from Inspections and Inspections.Web. The React/TypeScript frontend calls an ASP.NET Core API backed by EF Core and Microsoft SQL Server. The API supports inspection CRUD, pause history, image uploads and downloads, templates, checklists, and state records. The React app includes the inspection list, creation and editing, image viewing, and state-record screens.
 
+## Backend architecture
+
+Open `api/InspectionRecords.sln` in Visual Studio. Set `InspectionRecords.Api` as the startup project.
+
+| Project | Responsibility |
+| --- | --- |
+| `InspectionRecords.Domain` | Inspection, template, checklist, and state-record entities |
+| `InspectionRecords.Application` | Use cases, request/response contracts, and persistence interfaces |
+| `InspectionRecords.Infrastructure` | SQL Server contexts, EF Core migrations, repository implementations, and optional demo seed data |
+| `InspectionRecords.Api` | HTTP endpoints, dependency registration, and startup |
+
+Application depends on Domain. Infrastructure implements Application's persistence interfaces. API wires the projects together. The React frontend lives in `web/` and uses the same HTTP routes.
+
 ## Run locally on Windows
 
 Prerequisites are the .NET 10 SDK, Node.js 22.12+ or 24, and SQL Server or SQL Server Express LocalDB. Use a new demo database that your Windows login can create.
@@ -21,11 +34,11 @@ Prerequisites are the .NET 10 SDK, Node.js 22.12+ or 24, and SQL Server or SQL S
 
    If you use SQL authentication, keep the local connection string in .NET user secrets under `ConnectionStrings:Inspections` or set it in your shell environment. `TrustServerCertificate=True` is for local development.
 
-3. Initialize the schema and sample template, then start the API.
+3. Initialize the schema and fictional sample data, then start the API.
 
    ```powershell
-   dotnet run -- --initialize
-   dotnet run
+   dotnet run --project InspectionRecords.Api -- --initialize
+   dotnet run --project InspectionRecords.Api
    ```
 
 4. In a separate terminal from the repo root, start React.
@@ -40,7 +53,11 @@ Prerequisites are the .NET 10 SDK, Node.js 22.12+ or 24, and SQL Server or SQL S
 
 The local API listens on http://localhost:5080. Vite proxies `/api` requests to it. `GET /api/health` checks database connectivity. All uploaded images and demo records live in the local SQL Server database. The app uses a loopback-only API and requires no application sign-in.
 
+To apply the migrations without inserting sample records, use `dotnet run --project InspectionRecords.Api -- --initialize --schema-only`. Normal startup does neither. Both existing EF migration histories are preserved, so an initialized local database can be reused.
+
+If you use the user secrets CLI from the `api/` directory, pass `--project InspectionRecords.Api`.
+
 ## Checks
 
-- From `api`, run `dotnet build`.
+- From `api`, run `dotnet build InspectionRecords.sln`.
 - From `web`, run `npm run build` and `npm test -- --runInBand`.
