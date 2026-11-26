@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/dist/
+**/*.tsbuildinfo
+.vs/
+*.user
+.env
+.env.*
+appsettings.Local.json
+*.mdf
+*.ldf
+*.bak
