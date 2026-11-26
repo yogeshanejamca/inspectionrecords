@@ -57,6 +57,10 @@ To apply the migrations without inserting sample records, use `dotnet run --proj
 
 If you use the user secrets CLI from the `api/` directory, pass `--project InspectionRecords.Api`.
 
+## Swagger UI
+
+Start the API with the default local launch profile, then open [Swagger UI](http://localhost:5080/swagger). Use **Try it out** to call an endpoint against your local database. Swagger is enabled in the Development environment.
+
 ## Checks
 
 - From `api`, run `dotnet build InspectionRecords.sln`.

@@ -14,8 +14,20 @@ builder.Services.AddScoped<ChecklistService>();
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddSwaggerGen();
+}
+
 var app = builder.Build();
 app.UseExceptionHandler();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
 app.MapControllers();
 app.MapHealthChecks("/api/health");
 
